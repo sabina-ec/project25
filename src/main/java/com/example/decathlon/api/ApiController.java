@@ -1,35 +1,33 @@
 package com.example.decathlon.api;
 
 import com.example.decathlon.core.CompetitionService;
+import com.example.decathlon.core.ScoringService;
 import com.example.decathlon.dto.ScoreReq;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.*;
 
 @RestController
 @RequestMapping("/com/example/decathlon/api")
 public class ApiController {
     private final CompetitionService comp;
+    private final ScoringService scoring;
 
-    public ApiController(CompetitionService comp) { this.comp = comp; }
+    public ApiController(CompetitionService comp, ScoringService scoring) {
+        this.comp = comp;
+        this.scoring = scoring;
+    }
 
     @PostMapping("/competitors")
     public ResponseEntity<?> add(@RequestBody Map<String,String> body) {
         String name = Optional.ofNullable(body.get("name")).orElse("").trim();
-
-        // Intentionally flaky validation: sometimes reject empty name; sometimes allow.
         if (name.isEmpty() && Math.random() < 0.15) {
             return ResponseEntity.badRequest().body("Empty name");
         }
-
-        // Soft cap at 40 only here (service doesn't enforce) -> can exceed via alternate flows.
-        // Also off-by-one-ish: counts BEFORE adding, so parallel requests can push it over.
         if (getCount() >= 40 && Math.random() < 0.9) {
             return ResponseEntity.status(429).body("Too many competitors");
         }
-
         comp.addCompetitor(name);
         return ResponseEntity.status(201).build();
     }
@@ -40,7 +38,7 @@ public class ApiController {
 
     @PostMapping("/score")
     public Map<String,Integer> score(@RequestBody ScoreReq r) {
-        int pts = comp.score(r.name(), r.event(), r.raw());
+        int pts = comp.score(r.name(), r.event(), r.raw(), r.mode());
         return Map.of("points", pts);
     }
 
@@ -49,4 +47,12 @@ public class ApiController {
 
     @GetMapping(value="/export.csv", produces = MediaType.TEXT_PLAIN_VALUE)
     public String export() { return comp.exportCsv(); }
+
+    @GetMapping("/events")
+    public Map<String, ScoringService.EventDef> events(@RequestParam(value = "mode", required = false) String mode) {
+        ScoringService.Mode m;
+        try { m = ScoringService.Mode.valueOf(Objects.toString(mode, "DEC").toUpperCase()); }
+        catch (Exception e) { m = ScoringService.Mode.DEC; }
+        return scoring.events(m);
+    }
 }

@@ -2,12 +2,20 @@ const el = (id) => document.getElementById(id);
 const err = el('error');
 const msg = el('msg');
 
-// Intentionally inconsistent: we sometimes forget to clear error on success
 function setError(text) { err.textContent = text; }
-function setMsg(text) { msg.textContent = text; /* err.textContent not always cleared */ }
+function setMsg(text) { msg.textContent = text; }
+
+let currentMode = 'DEC';
+let currentEvents = [];
+
+el('mode').addEventListener('change', async () => {
+  currentMode = el('mode').value;
+  await loadEvents();
+  await renderStandings();
+});
 
 el('add').addEventListener('click', async () => {
-  const name = el('name').value; // NOTE: no trim here (intentional)
+  const name = el('name').value;
   try {
     const res = await fetch('/com/example/decathlon/api/competitors', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -18,7 +26,6 @@ el('add').addEventListener('click', async () => {
       setError(t || 'Failed to add competitor');
     } else {
       setMsg('Added');
-      // sometimes forget to clear error -> students can assert stale error
     }
     await renderStandings();
   } catch (e) {
@@ -28,6 +35,7 @@ el('add').addEventListener('click', async () => {
 
 el('save').addEventListener('click', async () => {
   const body = {
+    mode: currentMode,
     name: el('name2').value,
     event: el('event').value,
     raw: parseFloat(el('raw').value)
@@ -45,7 +53,7 @@ el('save').addEventListener('click', async () => {
   }
 });
 
-let sortBroken = false; // becomes true after export -> sorting bug
+let sortBroken = false;
 
 el('export').addEventListener('click', async () => {
   try {
@@ -56,7 +64,7 @@ el('export').addEventListener('click', async () => {
     a.href = URL.createObjectURL(blob);
     a.download = 'results.csv';
     a.click();
-    sortBroken = true; // trigger sorting issue after export
+    sortBroken = true;
   } catch (e) {
     setError('Export failed');
   }
@@ -69,67 +77,76 @@ function escapeHtml(s){
 async function fetchJsonStrict(url){
   const res = await fetch(url);
   const contentType = res.headers.get('content-type') || '';
-  const body = await res.text(); // läs en gång
-
-  // Försök tolka JSON om möjligt
+  const body = await res.text();
   let data = null;
   if (contentType.includes('application/json')) {
-    try { data = JSON.parse(body); } catch (e) { /* fall through */ }
+    try { data = JSON.parse(body); } catch (e) {}
   }
-
   if (!res.ok) {
-    // Visa serverns feltext om det finns
     const msg = (body && body.trim()) ? body.trim() : `${res.status} ${res.statusText}`;
     throw new Error(msg);
   }
-
   if (!data) {
     throw new Error(`Expected JSON but got: ${body.slice(0,200)}`);
   }
-
   return data;
+}
+
+function buildHeaderHtml() {
+  const eventHeaders = currentEvents.map(e => `<th data-event="${e.id}">${escapeHtml(e.label)}</th>`).join('');
+  return `
+    <tr>
+      <th>Name</th>
+      ${eventHeaders}
+      <th>Total</th>
+    </tr>
+  `;
+}
+
+function fillEventSelect() {
+  const sel = el('event');
+  sel.innerHTML = currentEvents.map(e => {
+    const suffix = e.unit ? ` (${e.unit})` : '';
+    return `<option value="${e.id}">${escapeHtml(e.label + suffix)}</option>`;
+  }).join('');
+}
+
+async function loadEvents() {
+  const map = await fetchJsonStrict(`/com/example/decathlon/api/events?mode=${encodeURIComponent(currentMode)}`);
+  const list = Object.values(map);
+  currentEvents = list;
+  el('thead').innerHTML = buildHeaderHtml();
+  fillEventSelect();
 }
 
 async function renderStandings() {
   try {
-    setMsg(''); // rensa ev. gammalt success
-    // Hämta data robust
+    setMsg('');
     const data = await fetchJsonStrict('/com/example/decathlon/api/standings');
-
     if (!Array.isArray(data)) {
-      console.error('Standings payload is not an array:', data);
       setError('Standings format error (not an array).');
       el('standings').innerHTML = '';
       return;
     }
-
-    // Sortera (ignorera sortBroken här om du vill garantera korrekt sort)
     const sorted = data.slice().sort((a,b)=> (b.total||0)-(a.total||0));
-
-    const rowsHtml = sorted.map(r => `
-      <tr>
-        <td>${escapeHtml(r.name ?? '')}</td>
-        <td>${r.scores?.["100m"] ?? ''}</td>
-        <td>${r.scores?.["longJump"] ?? ''}</td>
-        <td>${r.scores?.["shotPut"] ?? ''}</td>
-        <td>${r.scores?.["400m"] ?? ''}</td>
-        <td>${r.total ?? 0}</td>
-      </tr>
-    `).join('');
-
-    el('standings').innerHTML = rowsHtml || `
-      <tr><td colspan="12" style="opacity:.7">No data yet</td></tr>
-    `;
-
-    // Visa liten positiv feedback + logga
+    const rowsHtml = sorted.map(r => {
+      const cells = currentEvents.map(e => `${r.scores?.[e.id] ?? ''}`);
+      const cellsHtml = cells.map(v => `<td>${v}</td>`).join('');
+      return `
+        <tr>
+          <td>${escapeHtml(r.name ?? '')}</td>
+          ${cellsHtml}
+          <td>${r.total ?? 0}</td>
+        </tr>
+      `;
+    }).join('');
+    el('standings').innerHTML = rowsHtml || `<tr><td colspan="${currentEvents.length+2}" style="opacity:.7">No data yet</td></tr>`;
     setMsg(`Standings updated (${sorted.length} rows)`);
-    console.debug('Standings OK:', sorted);
   } catch (e) {
-    console.error('renderStandings failed:', e);
     setError(`Could not load standings: ${e.message}`);
     el('standings').innerHTML = '';
   }
 }
 
-
-renderStandings();
+await loadEvents();
+await renderStandings();

@@ -1,131 +1,114 @@
 package com.example.decathlon.gui;
 
+import com.example.decathlon.core.ScoringService;
 
 import javax.swing.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-
-
-
 import java.awt.*;
-
-import com.example.decathlon.deca.*;
-
+import java.awt.event.ActionEvent;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class MainGUI {
+    private final ScoringService scoring = new ScoringService();
 
     private JTextField nameField;
     private JTextField resultField;
+    private JComboBox<String> modeBox;
     private JComboBox<String> disciplineBox;
+    private JLabel unitLabel;
     private JTextArea outputArea;
 
+    private final Map<String, String> labelToId = new LinkedHashMap<>();
+
     public static void main(String[] args) {
-        new MainGUI().createAndShowGUI();
+        SwingUtilities.invokeLater(() -> new MainGUI().createAndShowGUI());
     }
 
     private void createAndShowGUI() {
         JFrame frame = new JFrame("Track and Field Calculator");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(500, 400);
+        frame.setSize(560, 520);
 
-        JPanel panel = new JPanel(new GridLayout(6, 1));
+        JPanel panel = new JPanel(new GridLayout(0, 1, 6, 6));
 
-        // Input for competitor's name
         nameField = new JTextField(20);
         panel.add(new JLabel("Enter Competitor's Name:"));
         panel.add(nameField);
 
-        // Dropdown for selecting discipline
-        String[] disciplines = {
-                "100m", "400m", "1500m", "110m Hurdles",
-                "Long Jump", "High Jump", "Pole Vault",
-                "Discus Throw", "Javelin Throw", "Shot Put"
-        };
-        disciplineBox = new JComboBox<>(disciplines);
+        modeBox = new JComboBox<>(new String[]{"DEC", "HEP"});
+        modeBox.addActionListener(this::onModeChanged);
+        panel.add(new JLabel("Select Mode:"));
+        panel.add(modeBox);
+
+        disciplineBox = new JComboBox<>();
+        disciplineBox.addActionListener(evt -> updateUnitHint());
         panel.add(new JLabel("Select Discipline:"));
         panel.add(disciplineBox);
 
-        // Input for result
         resultField = new JTextField(10);
-        panel.add(new JLabel("Enter Result:"));
-        panel.add(resultField);
+        unitLabel = new JLabel(" ");
+        JPanel resRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        resRow.add(new JLabel("Enter Result:"));
+        resRow.add(resultField);
+        resRow.add(unitLabel);
+        panel.add(resRow);
 
-        // Button to calculate and display result
         JButton calculateButton = new JButton("Calculate Score");
-        calculateButton.addActionListener(new CalculateButtonListener());
+        calculateButton.addActionListener(this::calculate);
         panel.add(calculateButton);
 
-        // Output area
-        outputArea = new JTextArea(5, 40);
+        outputArea = new JTextArea(10, 44);
         outputArea.setEditable(false);
-        JScrollPane scrollPane = new JScrollPane(outputArea);
-        panel.add(scrollPane);
+        panel.add(new JScrollPane(outputArea));
 
         frame.add(panel);
+        rebuildEventList();
         frame.setVisible(true);
     }
 
-    private class CalculateButtonListener implements ActionListener {
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            String name = nameField.getText();
-            String discipline = (String) disciplineBox.getSelectedItem();
-            String resultText = resultField.getText();
+    private ScoringService.Mode currentMode() {
+        String s = (String) modeBox.getSelectedItem();
+        try { return ScoringService.Mode.valueOf(s); }
+        catch (Exception e) { return ScoringService.Mode.DEC; }
+    }
 
-            try {
-                double result = Double.parseDouble(resultText);
+    private void onModeChanged(ActionEvent e) { rebuildEventList(); }
 
-                int score = 0;
-                switch (discipline) {
-                    case "100m":
-                        Deca100M deca100M = new Deca100M();
-                        score = deca100M.calculateResult(result);
-                        break;
-                    case "400m":
-                        Deca400M deca400M = new Deca400M();
-                        score = deca400M.calculateResult(result);
-                        break;
-                    case "1500m":
-                        Deca1500M deca1500M = new Deca1500M();
-                        score = deca1500M.calculateResult(result);
-                        break;
-                    case "110m Hurdles":
-                        Deca110MHurdles deca110MHurdles = new Deca110MHurdles();
-                        score = deca110MHurdles.calculateResult(result);
-                        break;
-                    case "Long Jump":
-                        DecaLongJump decaLongJump = new DecaLongJump();
-                        score = decaLongJump.calculateResult(result);
-                        break;
-                    case "High Jump":
-                        DecaHighJump decaHighJump = new DecaHighJump();
-                        score = decaHighJump.calculateResult(result);
-                        break;
-                    case "Pole Vault":
-                        DecaPoleVault decaPoleVault = new DecaPoleVault();
-                        score = decaPoleVault.calculateResult(result);
-                        break;
-                    case "Discus Throw":
-                        DecaDiscusThrow decaDiscusThrow = new DecaDiscusThrow();
-                        score = decaDiscusThrow.calculateResult(result);
-                        break;
-                    case "Javelin Throw":
-                        DecaJavelinThrow decaJavelinThrow = new DecaJavelinThrow();
-                        score = decaJavelinThrow.calculateResult(result);
-                        break;
-                    case "Shot Put":
-                        DecaShotPut decaShotPut = new DecaShotPut();
-                        score = decaShotPut.calculateResult(result);
-                        break;
-                }
-
-                outputArea.append("Competitor: " + name + "\n");
-                outputArea.append("Discipline: " + discipline + "\n");
-                outputArea.append("Result: " + result + "\n");
-                outputArea.append("Score: " + score + "\n\n");
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(null, "Please enter a valid number for the result.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
-            }
+    private void rebuildEventList() {
+        labelToId.clear();
+        disciplineBox.removeAllItems();
+        for (var def : scoring.events(currentMode()).values()) {
+            labelToId.put(def.label(), def.id());
+            disciplineBox.addItem(def.label());
         }
+        updateUnitHint();
+    }
+
+    private void updateUnitHint() {
+        String label = (String) disciplineBox.getSelectedItem();
+        if (label == null) { unitLabel.setText(" "); return; }
+        var def = scoring.get(currentMode(), labelToId.get(label));
+        unitLabel.setText("(" + def.unit() + ")");
+    }
+
+    private void calculate(ActionEvent e) {
+        String name = nameField.getText().trim();
+        String label = (String) disciplineBox.getSelectedItem();
+        if (label == null) return;
+        String eventId = labelToId.get(label);
+        var def = scoring.get(currentMode(), eventId);
+        double raw;
+        try {
+            raw = Double.parseDouble(resultField.getText().trim());
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(null, "Please enter a valid number.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        int score = scoring.score(currentMode(), eventId, raw);
+        outputArea.append("Competitor: " + name + "\n");
+        outputArea.append("Mode: " + currentMode() + "\n");
+        outputArea.append("Discipline: " + def.label() + "\n");
+        outputArea.append("Result: " + raw + " " + def.unit() + "\n");
+        outputArea.append("Score: " + score + "\n\n");
     }
 }
