@@ -45,7 +45,7 @@
         <label for="event">Event</label>
         <select id="event" data-testid="eventSelect"></select>
         <label for="raw">Result</label>
-        <input id="raw" data-testid="rawInput" type="number" step="0.01" />
+        <input id="raw" data-testid="rawInput" type="text" inputmode="decimal" />
         <button id="save" data-testid="saveScoreBtn">Save score</button>
     </div>
     <div id="msg" aria-live="polite"></div>
@@ -53,16 +53,15 @@
 
 <div class="card">
     <h2>Standings</h2>
+    <div class="row" style="gap: .75rem;">
+        <button id="export" data-testid="exportCsvBtn">Export CSV</button>
+        <button id="importBtn" data-testid="importCsvBtn">Import CSV</button>
+        <input id="importFile" type="file" accept=".csv,text/csv" style="display:none" />
+    </div>
     <table>
-        <thead id="thead">
-        <tr>
-            <th>Name</th>
-            <th>Total</th>
-        </tr>
-        </thead>
+        <thead id="thead"></thead>
         <tbody id="standings" data-testid="standingsTable"></tbody>
     </table>
-    <button id="export" data-testid="exportCsvBtn">Export CSV</button>
 </div>
 
 <script src="app.js" type="module"></script>

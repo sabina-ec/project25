@@ -32,9 +32,7 @@ public class ApiController {
         return ResponseEntity.status(201).build();
     }
 
-    private int getCount() {
-        return comp.standings().size();
-    }
+    private int getCount() { return comp.standings().size(); }
 
     @PostMapping("/score")
     public Map<String,Integer> score(@RequestBody ScoreReq r) {
@@ -46,7 +44,15 @@ public class ApiController {
     public List<Map<String,Object>> standings() { return comp.standings(); }
 
     @GetMapping(value="/export.csv", produces = MediaType.TEXT_PLAIN_VALUE)
-    public String export() { return comp.exportCsv(); }
+    public String export(@RequestParam(value="mode", required=false) String mode) {
+        return comp.exportCsv(mode);
+    }
+
+    @PostMapping(value="/import.csv", consumes = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<?> importCsv(@RequestBody String csv) {
+        comp.importCsv(csv);
+        return ResponseEntity.ok().build();
+    }
 
     @GetMapping("/events")
     public Map<String, ScoringService.EventDef> events(@RequestParam(value = "mode", required = false) String mode) {
